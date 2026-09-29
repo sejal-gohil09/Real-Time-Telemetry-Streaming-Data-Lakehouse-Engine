@@ -1,0 +1,102 @@
+# ===========================================================================
+# dbt_project.yml
+# ===========================================================================
+# dbt core configuration for the UK Energy Settlement Lakehouse.
+#
+# This project transforms raw smart meter and carbon intensity data
+# (landed by Python pipelines) into analytical marts for settlement
+# and reporting via Power BI.
+#
+# Author: Sejal Gohil
+# ===========================================================================
+
+name: 'uk_energy_settlement_lakehouse'
+version: '1.0.0'
+config-version: 2
+
+profile: 'uk_energy_lakehouse'
+
+# ---------------------------------------------------------------------------
+# Project paths
+# ---------------------------------------------------------------------------
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+snapshot-paths: ["snapshots"]
+analysis-paths: ["analyses"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+  - "logs"
+
+# ---------------------------------------------------------------------------
+# Model materialization defaults
+# ---------------------------------------------------------------------------
+
+models:
+  uk_energy_settlement_lakehouse:
+    +persist_docs:
+      relation: true
+      columns: true
+
+    staging:
+      +schema: staging
+      +materialized: view
+      +tags: ["staging", "hourly"]
+
+    marts:
+      +schema: marts
+      +materialized: table
+      +tags: ["marts", "daily"]
+      +post-hook:
+        - "GRANT SELECT ON {{ this }} TO ROLE ANALYST_ROLE"
+        - "GRANT SELECT ON {{ this }} TO ROLE ENGLAND_ANALYST"
+        - "GRANT SELECT ON {{ this }} TO ROLE SCOTLAND_ANALYST"
+        - "GRANT SELECT ON {{ this }} TO ROLE WALES_ANALYST"
+
+# ---------------------------------------------------------------------------
+# Seeds (reference data loaded via dbt seed)
+# ---------------------------------------------------------------------------
+
+seeds:
+  uk_energy_settlement_lakehouse:
+    +schema: shared
+    +enabled: true
+
+    region_lookup:
+      +column_types:
+        region_name: varchar
+        country: varchar
+        gsp_group: varchar
+        population_2024: integer
+
+# ---------------------------------------------------------------------------
+# Variables (project-wide)
+# ---------------------------------------------------------------------------
+
+vars:
+  # Settlement configuration
+  settlement_currency: "GBP"
+  settlement_granularity_minutes: 30
+
+  # Carbon intensity API
+  carbon_api_base_url: "https://api.carbonintensity.org.uk"
+
+  # PII masking toggle (set false to disable in dev environments)
+  enable_pii_masking: true
+
+  # Data quality thresholds
+  max_acceptable_lag_minutes: 5
+  min_completeness_pct: 99.5
+
+# ---------------------------------------------------------------------------
+# Dispatch (macro overrides)
+# ---------------------------------------------------------------------------
+
+dispatch-config:
+  - macro_namespace: dbt_utils
+    search_order: ["uk_energy_settlement_lakehouse", "dbt_utils"]

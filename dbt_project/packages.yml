@@ -1,0 +1,25 @@
+# ===========================================================================
+# packages.yml
+# ===========================================================================
+# External dbt packages used by the UK Energy Settlement Lakehouse project.
+#
+# Install with: dbt deps
+# Author: Sejal Gohil
+# ===========================================================================
+
+packages:
+  # dbt_utils: general-purpose macros (date_spine, generate_series, etc.)
+  - package: dbt-labs/dbt_utils
+    version: 1.3.0
+
+  # dbt_expectations: data-quality testing framework (Great Expectations style)
+  - package: calogica/dbt_expectations
+    version: 0.10.4
+
+  # dbt_code_coverage: code coverage for dbt projects
+  - package: dbt-labs/dbt_code_coverage
+    version: 0.0.3
+
+  # audit_helper: schema change tracking and audit macros
+  - package: dbt-labs/audit_helper
+    version: 0.12.0

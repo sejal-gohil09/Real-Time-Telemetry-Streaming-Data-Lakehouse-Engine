@@ -1,0 +1,39 @@
+# ===========================================================================
+# requirements.txt
+# ===========================================================================
+# Python dependencies for the UK Energy Settlement Lakehouse project.
+#
+# Install: pip install -r requirements.txt
+# Author: Sejal Gohil
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# Data Ingestion & API
+# ---------------------------------------------------------------------------
+requests==2.32.3              # HTTP client for National Grid Carbon Intensity API
+pandas==2.2.3                 # DataFrame operations for data transformation
+
+# ---------------------------------------------------------------------------
+# Snowflake
+# ---------------------------------------------------------------------------
+snowflake-connector-python[secure-storage]==3.12.3  # Snowflake Python connector
+snowflake-connector-python[pandas]==3.12.3           # Pandas integration for write_pandas
+
+# ---------------------------------------------------------------------------
+# dbt (installed separately via pip, but pinned here for reproducibility)
+# ---------------------------------------------------------------------------
+dbt-snowflake==1.7.0         # dbt adapter for Snowflake
+
+# ---------------------------------------------------------------------------
+# Data Quality & Linting
+# ---------------------------------------------------------------------------
+ruff==0.6.9                  # Fast Python linter
+sqlfluff==3.1.1              # SQL linter and formatter (Snowflake dialect)
+great-expectations==0.18.19  # Data quality validation framework
+
+# ---------------------------------------------------------------------------
+# Utilities
+# ---------------------------------------------------------------------------
+python-dotenv==1.0.1         # Load .env files for local development
+pyyaml==6.0.2                # YAML parsing for config files
+tqdm==4.66.5                 # Progress bars for long-running pipelines

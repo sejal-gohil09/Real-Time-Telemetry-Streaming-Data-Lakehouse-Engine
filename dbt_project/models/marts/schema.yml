@@ -1,0 +1,190 @@
+version: 2
+
+# ===========================================================================
+# Marts models schema.yml
+# ===========================================================================
+# Documentation and data quality tests for mart models.
+# Author: Sejal Gohil
+# ===========================================================================
+
+models:
+  - name: dim_customers
+    description: >
+      Customer dimension with PII-masked names, regional attributes, and
+      profile classification. One row per customer.
+    columns:
+      - name: customer_key
+        description: "Surrogate key for the customer dimension"
+        tests:
+          - not_null
+          - unique
+      - name: customer_id
+        description: "Natural key — customer identifier (masked for non-privileged roles)"
+        tests:
+          - not_null
+          - unique
+      - name: customer_name_masked
+        description: "SHA2-hashed customer name (GDPR compliant)"
+        tests:
+          - not_null
+      - name: country
+        description: "Country (England, Scotland, Wales) — drives RLS policy"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['England', 'Scotland', 'Wales']
+      - name: region_name
+        description: "UK region name"
+        tests:
+          - not_null
+      - name: gsp_group
+        description: "Grid Supply Point group identifier"
+        tests:
+          - not_null
+      - name: customer_segment
+        description: "Customer classification (Domestic, Small Business, Industrial)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Domestic', 'Small Business', 'Industrial']
+      - name: num_meters
+        description: "Number of smart meters associated with this customer"
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 1
+              max_value: 100
+      - name: first_seen_date
+        description: "Earliest settlement date for this customer"
+        tests:
+          - not_null
+      - name: last_seen_date
+        description: "Most recent settlement date for this customer"
+        tests:
+          - not_null
+
+  - name: dim_regions
+    description: >
+      Region dimension with GSP groups, countries, population data, and rankings.
+      One row per UK region.
+    columns:
+      - name: region_key
+        description: "Surrogate key for the region dimension"
+        tests:
+          - not_null
+          - unique
+      - name: region_name
+        description: "UK region name (natural key)"
+        tests:
+          - not_null
+          - unique
+      - name: country
+        description: "Country (England, Scotland, Wales)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['England', 'Scotland', 'Wales']
+      - name: gsp_group
+        description: "Grid Supply Point group identifier"
+        tests:
+          - not_null
+      - name: population_2024
+        description: "Estimated 2024 population for this region"
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 100000
+              max_value: 10000000
+      - name: population_rank
+        description: "Ranking by population (1 = largest)"
+        tests:
+          - not_null
+
+  - name: fct_half_hourly_settlement
+    description: >
+      Core settlement fact table. Joins smart meter consumption with grid
+      carbon intensity to calculate carbon emissions and estimated costs.
+      Grain: one row per (mpan, settlement_date, settlement_period).
+    tests:
+      - dbt_utils.expression_is_true:
+          expression: "kwh_consumed >= 0"
+      - dbt_utils.expression_is_true:
+          expression: "carbon_emissions_kg >= 0"
+      - dbt_utils.expression_is_true:
+          expression: "estimated_cost_gbp >= 0"
+    columns:
+      - name: settlement_key
+        description: "Surrogate key for the settlement fact table"
+        tests:
+          - not_null
+          - unique
+      - name: mpan
+        description: "Smart meter identifier (masked for non-privileged roles)"
+        tests:
+          - not_null
+      - name: customer_id
+        description: "Customer identifier (masked for non-privileged roles)"
+        tests:
+          - not_null
+      - name: settlement_date
+        description: "Settlement date"
+        tests:
+          - not_null
+      - name: settlement_period
+        description: "Half-hourly period (1-48)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+                        11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+                        21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
+                        31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+                        41, 42, 43, 44, 45, 46, 47, 48]
+      - name: kwh_consumed
+        description: "Electricity consumption in kWh"
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 500
+      - name: carbon_emissions_kg
+        description: "Carbon emissions in kgCO2 (kWh * gCO2/kWh / 1000)"
+        tests:
+          - not_null
+      - name: estimated_cost_gbp
+        description: "Estimated cost in GBP (kWh * tariff rate)"
+        tests:
+          - not_null
+      - name: carbon_intensity_gco2_kwh
+        description: "Grid carbon intensity at settlement period (gCO2/kWh)"
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 600
+      - name: carbon_category
+        description: "Carbon intensity tier (VERY_LOW to VERY_HIGH)"
+        tests:
+          - accepted_values:
+              values: ['VERY_LOW', 'LOW', 'MODERATE', 'HIGH', 'VERY_HIGH']
+              severity: warn
+      - name: tariff_band
+        description: "Tariff classification (PEAK, OFF_PEAK, STANDARD)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['PEAK', 'OFF_PEAK', 'STANDARD']
+      - name: country
+        description: "Country — drives RLS policy"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['England', 'Scotland', 'Wales']
+      - name: is_peak_period
+        description: "TRUE if within peak demand window"
+        tests:
+          - not_null
+      - name: season
+        description: "Season (WINTER, SPRING, SUMMER, AUTUMN)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['WINTER', 'SPRING', 'SUMMER', 'AUTUMN']

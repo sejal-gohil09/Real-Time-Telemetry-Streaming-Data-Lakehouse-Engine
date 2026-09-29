@@ -1,0 +1,148 @@
+version: 2
+
+# ===========================================================================
+# Staging models schema.yml
+# ===========================================================================
+# Sources, model documentation, and data quality tests for staging models.
+# Author: Sejal Gohil
+# ===========================================================================
+
+sources:
+  - name: raw
+    schema: RAW
+    database: UK_ENERGY_LAKEHOUSE
+    description: "Raw landing zone — data as ingested by Python pipelines"
+    tables:
+      - name: raw_smart_meter_readings
+        description: "Raw half-hourly smart meter readings loaded by load_to_snowflake.py"
+        loaded_at_field: ingested_at
+        freshness:
+          warn_after: {count: 1, period: hour}
+          error_after: {count: 3, period: hours}
+        columns:
+          - name: mpan
+            description: "Meter Point Administration Number — unique smart meter ID"
+            tests:
+              - not_null
+          - name: settlement_date
+            description: "Settlement date (UK local)"
+            tests:
+              - not_null
+          - name: settlement_period
+            description: "Half-hourly period number (1-48)"
+            tests:
+              - not_null
+          - name: kwh_consumed
+            description: "Electricity consumption in kWh"
+            tests:
+              - not_null
+          - name: country
+            description: "Country within UK (England, Scotland, Wales)"
+            tests:
+              - not_null
+              - accepted_values:
+                  values: ['England', 'Scotland', 'Wales']
+
+      - name: raw_grid_carbon_intensity
+        description: "Raw carbon intensity data from National Grid ESO API"
+        loaded_at_field: ingested_at
+        freshness:
+          warn_after: {count: 30, period: minutes}
+          error_after: {count: 2, period: hours}
+        columns:
+          - name: period_from
+            description: "Start of half-hour carbon intensity period"
+            tests:
+              - not_null
+          - name: forecast_intensity
+            description: "Forecasted carbon intensity in gCO2/kWh"
+            tests:
+              - not_null
+
+models:
+  - name: stg_smart_meters
+    description: >
+      Cleaned, typed, and deduplicated smart meter half-hourly readings.
+      Derived columns: day_of_week, hour_of_day, is_peak_period, day_type, season.
+      PII masking applied on customer_id.
+    columns:
+      - name: mpan
+        description: "Smart meter identifier"
+        tests:
+          - not_null
+          - unique:
+              severity: warn
+      - name: customer_id
+        description: "Customer identifier (PII-masked for non-privileged roles)"
+        tests:
+          - not_null
+      - name: settlement_date
+        description: "Settlement date"
+        tests:
+          - not_null
+      - name: settlement_period
+        description: "Half-hourly period (1-48)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+                        11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+                        21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
+                        31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+                        41, 42, 43, 44, 45, 46, 47, 48]
+      - name: kwh_consumed
+        description: "Electricity consumption in kWh"
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 100  # sanity check for a single half-hour reading
+      - name: country
+        description: "Country (England, Scotland, Wales)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['England', 'Scotland', 'Wales']
+      - name: is_peak_period
+        description: "TRUE if within morning or evening peak demand window"
+        tests:
+          - not_null
+      - name: season
+        description: "Season derived from settlement_date"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['WINTER', 'SPRING', 'SUMMER', 'AUTUMN']
+
+  - name: stg_grid_carbon
+    description: >
+      Cleaned and typed carbon intensity data from National Grid ESO API.
+      Resolves actual vs forecast intensity and adds carbon_category tiers.
+    columns:
+      - name: period_from
+        description: "Start of carbon intensity period"
+        tests:
+          - not_null
+          - unique:
+              severity: warn
+      - name: resolved_intensity
+        description: "Actual intensity if available, else forecast"
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 600
+      - name: carbon_category
+        description: "Carbon intensity tier (VERY_LOW to VERY_HIGH)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['VERY_LOW', 'LOW', 'MODERATE', 'HIGH', 'VERY_HIGH']
+      - name: settlement_date
+        description: "Date for joining with meter data"
+        tests:
+          - not_null
+      - name: settlement_period
+        description: "Half-hourly period (1-48) for joining with meter data"
+        tests:
+          - not_null
